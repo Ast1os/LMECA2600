@@ -17,7 +17,7 @@ def crossSection(X, Transfo, E_neutron):
         values of the cross section in [barn] corresponding to the input parameters
     """
 
-    # Your work : here
+    # Test aless
 
     # ==================================  Check arguments  ==================================
     #  Check that the nucleon/nuclide asked, and that the associated transformation exists in the database
