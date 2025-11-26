@@ -47,7 +47,7 @@ fuelCompo = Fuel()
 FPCompo = FP()
 
 
-# Try the function  Reza test
+# Try the function  Reza test final c'est bon la
 
 # Mm = mM.molarMass('U235')
 # hl = hL.halfLife(X='Pa233', Transfo='BetaMinus')
