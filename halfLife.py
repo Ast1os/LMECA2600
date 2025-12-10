@@ -1,33 +1,77 @@
-def halfLife(X, Transfo):
+# halfLife.py
+# Renvoie la demi-vie (en secondes) pour quelques noyaux et modes de décroissance.
+
+def halfLife(nuclide: str, transfo: str) -> float:
     """
-    Return the half life of a nuclide or nucleon for a specific transformation
-    Data available on http://wwwndc.jaea.go.jp/NuC/ (more precisely: http://wwwndc.jaea.go.jp/CN14/index.html)
+    Retourne la demi-vie T1/2 (en secondes) du nucléide 'nuclide'
+    pour un mode de transformation radioactif donné.
 
-    ----------------
-    :param X: string
-        nuclide or nucleon (for a neutron), that follows the atomic notation of the element,
-        i.e.: for the Uranium 235, X = 'U235'
-    :param Transfo: string
-        name of the considered transformation, should be one of the following in the list
-        ['Alpha', 'BetaMinus', 'BetaPlus', 'Gamma']
-    :return: the half life of X for the transformation Transfo in seconds
+    Paramètres
+    ----------
+    nuclide : str
+        Par ex. "U235", "U238", "U239", "Np239", "Pu239", "Pu240", "Xe135", etc.
+    transfo : str
+        Type de transformation radioactives, parmi :
+        "Alpha", "BetaMinus", "BetaPlus", "Gamma"
+
+    Retour
+    ------
+    float
+        Demi-vie en secondes.
+
+    Exceptions
+    ----------
+    ValueError si la combinaison (nuclide, transfo) n'est pas définie.
+
+    Remarque
+    --------
+    Les valeurs numériques sont approximatives mais physiquement réalistes.
+    Pour ce projet, seules les demi-vies à l'échelle de la seconde / heure
+    jouent un rôle (Xe135, précurseurs...), les demi-vies géologiques peuvent
+    être considérées comme infinies à l'échelle du transitoire.
     """
 
-    # Your work : here
+    # Constantes pratiques
+    year = 365.25 * 24 * 3600.0
+    hour = 3600.0
+    minute = 60.0
+    day = 24 * 3600.0
 
-    # ==================================  Check arguments  ==================================
-    #  Check that the nucleon/nuclide asked, and that the associated transformation exists in the database
-    if X != 'Th232' and X != 'Th233' and X != 'Pa233' and X != 'U233' and X != 'U235'and X != 'U236'and X != 'U237' and X != 'U238'\
-            and X != 'U239' and X != 'Np239' and X != 'Pu239' and X != 'Pu240' and X != 'Xe135':
-        print('\n WARNING : There is no database for element ', X, '. \n Please check function information')
+    # dictionnaire : (nuclide, transfo) -> T1/2 en s
+    hl = {
+        # Chaîne fertile U238 -> Pu239
+        ("U239", "BetaMinus"): 23.5 * minute,     # ~23.5 min
+        ("Np239", "BetaMinus"): 2.356 * day,      # ~2.36 jours
 
-     # Check whether the transformation exists or not
-    if Transfo != 'Alpha' and Transfo != 'BetaMinus' and Transfo != 'BetaPlus' and Transfo != 'Gamma': # Transfos Gamma très courtes
-        print('\n WARNING : These transformation are not implemented :', Transfo, '.\n Please check function information')
+        # Xe135 (important pour l'effet poison)
+        ("Xe135", "BetaMinus"): 9.14 * hour,      # ~9.14 h
 
-    # hl = 0.
+        # Actinides lourds : demi-vies énormes (quasi stables pour nous)
+        ("U235", "Alpha"): 7.04e8 * year,
+        ("U238", "Alpha"): 4.47e9 * year,
+        ("Th232", "Alpha"): 1.40e10 * year,
+        ("Pu239", "Alpha"): 2.41e4 * year,
+        ("Pu240", "Alpha"): 6.56e3 * year,
 
-    return hl
+        # Chaîne fertile Th232 -> U233 (au cas où)
+        ("Th233", "BetaMinus"): 22.3 * minute,
+        ("Pa233", "BetaMinus"): 26.97 * day,
+    }
 
-# Try your function
-# hl = halfLife(X='Pa233', Transfo='BetaMinus')
+    key = (nuclide, transfo)
+    if key not in hl:
+        raise ValueError(f"Half-life not defined for nuclide '{nuclide}' with transformation '{transfo}'")
+
+    return hl[key]
+
+
+if __name__ == "__main__":
+    tests = [
+        ("U239", "BetaMinus"),
+        ("Np239", "BetaMinus"),
+        ("Xe135", "BetaMinus"),
+        ("U235", "Alpha"),
+    ]
+    for X, T in tests:
+        print(X, T, ":", halfLife(X, T), "s")
+
