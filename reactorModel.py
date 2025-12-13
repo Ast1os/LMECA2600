@@ -25,13 +25,11 @@ def reactorModel(fuelCompo, FPCompo, t_final, n_th_init, n_fa_init, mTot):
             initial number of fast neutrons
     :param mTot: double
             total number of kg of fuel at the initial state in [kg]
-    :return fuelBurnup: array
-            depending on the fuel, returns the burnup
+    :return: dict
+            time histories (power, neutrons, fuel, Xe, control, burnup, k_eff)
     """
-
-# ===================== Global constants & numerics ========================
-    V_core = 10.0                # Reactor core volume [m^3]
-    dt = 1e-4                    # Time step [s]
+    V_core = 10.0                
+    dt = 1e-4                    
     n_steps = int(t_final / dt) + 1
     time = np.linspace(0.0, t_final, n_steps)
 
@@ -51,26 +49,24 @@ def reactorModel(fuelCompo, FPCompo, t_final, n_th_init, n_fa_init, mTot):
     # Conversion from microscopic σ [barn] to effective rate coefficient
     # rate ≈ σ [m²] * v [m/s] * n/V [1/m³] * N [-]
     k_th = v_th / V_core * 1e-28
-    k_fast = v_fast / V_core * 1e-28  # (non utilisé pour les actinides dans ce modèle simplifié)
+    k_fast = v_fast / V_core * 1e-28  # ready if you want fast reactions later
 
     # ======================== Initial fuel inventories ========================
-    # Fuel mass fractions in %
     frac_U235 = fuelCompo.U235 / 100.0
     frac_U238 = fuelCompo.U238 / 100.0
     frac_Pu239 = fuelCompo.Pu239 / 100.0
     frac_Th232 = fuelCompo.Th232 / 100.0
 
-    # Numbers of heavy nuclei at t=0
     N_U235 = mTot * frac_U235 / mM.molarMass('U235') * NA
     N_U238 = mTot * frac_U238 / mM.molarMass('U238') * NA
     N_Pu239 = mTot * frac_Pu239 / mM.molarMass('Pu239') * NA
-    N_Th232 = mTot * frac_Th232 / mM.molarMass('Th232') * NA  # non utilisé dans ce modèle simple
+    N_Th232 = mTot * frac_Th232 / mM.molarMass('Th232') * NA  # unused in simplified model
 
-    # Fission products: Xe-135 (poison) + lumped FP (delayed neutron precursors)
+    # Fission products
     N_Xe = 0.0
     N_FP = 0.0
 
-    # Neutrons (fast & thermal)
+    # Neutrons
     n_th = n_th_init
     n_fa = n_fa_init
 
@@ -78,28 +74,22 @@ def reactorModel(fuelCompo, FPCompo, t_final, n_th_init, n_fa_init, mTot):
     frac_xe = FPCompo.Xe135 / (FPCompo.Xe135 + FPCompo.FP)
     frac_fp = FPCompo.FP / (FPCompo.Xe135 + FPCompo.FP)
 
-    # Prompt neutrons per fission
-    nu_prompt = 2.0
+    nu_prompt = 2.0                # prompt neutrons per fission
 
-    # Effective delayed fraction beta (order-of-magnitude)
-    beta_eff = 0.0065
-    nu_delayed = beta_eff / (1.0 - beta_eff) * nu_prompt  # delayed neutrons per fission
+    beta_eff = 0.0065              # effective delayed fraction
+    nu_delayed = beta_eff / (1.0 - beta_eff) * nu_prompt
 
-    # Each fission produces 2 unstable FP, fraction frac_fp are "lumped FP"
     lumps_FP_per_fission = 2.0 * frac_fp
     if lumps_FP_per_fission > 0.0:
-        eta_delayed = nu_delayed / lumps_FP_per_fission   # delayed n per decaying FP
+        eta_delayed = nu_delayed / lumps_FP_per_fission   # delayed neutrons per decaying FP
     else:
         eta_delayed = 0.0
 
     # ================= Slowdown & radioactive decay constants =================
-    # Fast -> thermal half-time
-    lambda_sd = np.log(2.0) / (5e-4)   # [1/s]
+    lambda_sd = np.log(2.0) / (5e-4)   # [1/s] fast -> thermal (given)
 
-    # Lumped FP half-life ~ 1 s
-    lambda_FP = np.log(2.0) / 1.0      # [1/s]
+    lambda_FP = np.log(2.0) / 1.0      # [1/s] FP lumped (T1/2 ~ 1s, hint)
 
-    # Xe-135 beta- decay constant
     hl_Xe = hL.halfLife('Xe135', 'BetaMinus')
     if np.isinf(hl_Xe) or hl_Xe <= 0.0:
         lambda_Xe = 0.0
@@ -116,28 +106,29 @@ def reactorModel(fuelCompo, FPCompo, t_final, n_th_init, n_fa_init, mTot):
     sigma_c_Pu239_th = cS.crossSection('Pu239', 'Capture', E_th)
     sigma_c_Xe_th = cS.crossSection('Xe135', 'Capture', E_th)
 
-    # ======================= Leak & control-rod parameters =====================
-    # Leak terms (constant)
+    # ======================= Leak & control-rod parameters ====================
     SIGMA_LEAK_FAST = 0.5     # [1/s]
     SIGMA_LEAK_TH = 0.05      # [1/s]
 
-    # Control rods: additional absorption, both thermal and fast, in [0;20] 1/s
-    SIGMA_CTRL_MAX = 20.0     # [1/s]
-    sigma_ctrl_th = 0.0       # thermal control Σ_th
-    sigma_ctrl_fast = 0.0     # fast   control Σ_fast
+    SIGMA_CTRL_MAX = 20.0    # [1/s]
+
+    # Position de référence des barres : un peu plus absorbant au départ
+    # => k_eff(t=0) < 1 (sous-critique, barres plus enfoncées)
+    SIGMA_EQ_TH = 14.9       # [1/s]
+    SIGMA_EQ_FAST = 14.9     # [1/s]
+
+    # On initialise les Σ_ctrl à leur valeur de référence
+    sigma_ctrl_th = SIGMA_EQ_TH
+    sigma_ctrl_fast = SIGMA_EQ_FAST
 
     # ====================== Energies per nuclear event ========================
-    # Typical values :  ~200 MeV per fission, split into:
-    #  - prompt fission energy (~180 MeV)
-    #  - delayed FP decay energy (~10 MeV)
-    #  - neutron slowing-down (~1 MeV)
     E_FISSION_PROMPT = 180.0e6 * e_charge  # [J] per fission
     E_FP_DECAY = 10.0e6 * e_charge         # [J] per FP decay
     E_SLOWDOWN = E_fast_eV * e_charge      # [J] per neutron slowed to thermal
 
     # ============================ Storage arrays ==============================
-    burnup = np.zeros(n_steps)       # [MWd/kg]
-    P_total_arr = np.zeros(n_steps)  # [W]
+    burnup = np.zeros(n_steps)
+    P_total_arr = np.zeros(n_steps)
     n_th_arr = np.zeros(n_steps)
     n_fa_arr = np.zeros(n_steps)
     N_U235_arr = np.zeros(n_steps)
@@ -146,19 +137,18 @@ def reactorModel(fuelCompo, FPCompo, t_final, n_th_init, n_fa_init, mTot):
     N_Xe_arr = np.zeros(n_steps)
     sigma_ctrl_th_arr = np.zeros(n_steps)
     sigma_ctrl_fast_arr = np.zeros(n_steps)
+    k_eff_arr = np.zeros(n_steps)          # <-- k_eff(t)
 
-    E_cum = 0.0      # cumulative energy [J]
+    E_cum = 0.0  # cumulative energy [J]
 
-    # ---------- Power setpoint (steady power you want) ----------
-    # À ajuster si besoin. Pour toi, un ordre de grandeur raisonnable
-    # vu ton pic ~1.5e10 W est P_set ≈ 1e9 W.
-    P_set = 1e9      # [W]
+    # ---------- Power setpoint (with ramp) ----------
+    P_nominal = 1e9      # [W] puissance nominale visée
+    t_ramp = 50.0        # [s] durée de la rampe 0 -> P_nominal
 
-    # ---------- P-controller gains for control rods ----------
-    # On ne multiplie PLUS par dt dans la loi de contrôle (voir plus bas),
-    # donc les gains doivent être petits.
-    Kp_th = 1e-11    # gain pour Σ_ctrl_th
-    Kp_fast = 5e-12  # gain pour Σ_ctrl_fast
+    # ---------- P-controller (statique autour d'un Σ_eq) ----------
+    # Gains assez doux pour éviter l'overshoot
+    Kp_th_rel = 3.0      # gain sans dimension pour les thermiques
+    Kp_fast_rel = 1.5    # gain sans dimension pour les rapides
 
     # ============================ Time integration ============================
     for k in range(n_steps):
@@ -175,46 +165,35 @@ def reactorModel(fuelCompo, FPCompo, t_final, n_th_init, n_fa_init, mTot):
         sigma_ctrl_fast_arr[k] = sigma_ctrl_fast
 
         # ---------------------- Reaction rates [1/s] -------------------------
-        # Fissions (thermal)
         Rf_U235 = k_th * sigma_f_U235_th * n_th * N_U235
         Rf_U238 = k_th * sigma_f_U238_th * n_th * N_U238
         Rf_Pu239 = k_th * sigma_f_Pu239_th * n_th * N_Pu239
 
-        # Captures (thermal)
         Rc_U235 = k_th * sigma_c_U235_th * n_th * N_U235
         Rc_U238 = k_th * sigma_c_U238_th * n_th * N_U238
         Rc_Pu239 = k_th * sigma_c_Pu239_th * n_th * N_Pu239
 
-        # Xe-135 capture
         Rcap_Xe = k_th * sigma_c_Xe_th * n_th * N_Xe
 
-        # Total fission rate
         Rf_total = Rf_U235 + Rf_U238 + Rf_Pu239
 
         # --------------------- Neutron sources & losses ----------------------
-        # Fast -> thermal slowdown
         S_slowdown = lambda_sd * n_fa
-
-        # Delayed neutrons from FP decays (assumed directly thermal)
         S_delayed = eta_delayed * lambda_FP * N_FP
 
-        # Total losses of thermal neutrons by nuclear interactions + Xe + leak + rods
         Loss_th_nuc = (Rf_total + Rc_U235 + Rc_U238 + Rc_Pu239 + Rcap_Xe)
         Loss_th_add = (SIGMA_LEAK_TH + sigma_ctrl_th) * n_th
 
-        # ODEs for neutrons
         dn_th_dt = S_slowdown + S_delayed - Loss_th_nuc - Loss_th_add
         dn_fa_dt = (nu_prompt * Rf_total
                     - lambda_sd * n_fa
                     - (SIGMA_LEAK_FAST + sigma_ctrl_fast) * n_fa)
 
-        # ODEs for heavy nuclides (fission + capture)
         dN_U235_dt = -(Rf_U235 + Rc_U235)
         dN_U238_dt = -(Rf_U238 + Rc_U238)
         dN_Pu239_dt = -(Rf_Pu239 + Rc_Pu239)
-        dN_Th232_dt = 0.0  # chaîne thorium négligée ici
+        dN_Th232_dt = 0.0
 
-        # ODEs for fission products
         dN_Xe_dt = 2.0 * frac_xe * Rf_total - lambda_Xe * N_Xe - Rcap_Xe
         dN_FP_dt = 2.0 * frac_fp * Rf_total - lambda_FP * N_FP
 
@@ -225,18 +204,43 @@ def reactorModel(fuelCompo, FPCompo, t_final, n_th_init, n_fa_init, mTot):
         P_total = P_fission + P_FP + P_slow
         P_total_arr[k] = P_total
 
-                # ----------------------- Control rods (feedback) ---------------------
-        # On veut P_total ≈ P_set.
-        error = P_total - P_set  # >0 : trop de puissance → on insère des barres
+        # ----------------------- k_eff instantané ----------------------------
+        # Production de neutrons : prompts + retardés
+        prod_neutrons = nu_prompt * Rf_total + S_delayed
 
-        # Correcteur proportionnel simple (PAS de *dt ici)
-        sigma_ctrl_th += Kp_th * error
-        sigma_ctrl_fast += Kp_fast * error
+        # Pertes : absorptions nucléaires + fuites + barres
+        loss_leak_ctrl = (SIGMA_LEAK_FAST + sigma_ctrl_fast) * n_fa \
+                         + (SIGMA_LEAK_TH + sigma_ctrl_th) * n_th
+        loss_abs_nuc = Loss_th_nuc
+        loss_total = loss_abs_nuc + loss_leak_ctrl
+
+        if loss_total > 0.0:
+            k_eff_inst = prod_neutrons / loss_total
+        else:
+            k_eff_inst = 0.0
+
+        k_eff_arr[k] = k_eff_inst
+
+        # ----------------------- Control rods (feedback) ---------------------
+        # Consigne de puissance rampée 0 -> P_nominal sur t_ramp
+        if t < t_ramp:
+            P_set_t = P_nominal * (t / t_ramp)
+        else:
+            P_set_t = P_nominal
+
+        # Erreur relative de puissance (normalisée par P_nominal)
+        if P_nominal > 0.0:
+            rel_error = (P_total - P_set_t) / P_nominal
+        else:
+            rel_error = 0.0
+
+        # Loi de commande "statique" autour de Σ_eq :
+        sigma_ctrl_th = SIGMA_EQ_TH + Kp_th_rel * rel_error
+        sigma_ctrl_fast = SIGMA_EQ_FAST + Kp_fast_rel * rel_error
 
         # Saturation Σ ∈ [0 ; SIGMA_CTRL_MAX]
         sigma_ctrl_th = max(0.0, min(SIGMA_CTRL_MAX, sigma_ctrl_th))
         sigma_ctrl_fast = max(0.0, min(SIGMA_CTRL_MAX, sigma_ctrl_fast))
-
 
         # ---------------------- Euler explicit update ------------------------
         n_th = max(0.0, n_th + dn_th_dt * dt)
@@ -264,6 +268,7 @@ def reactorModel(fuelCompo, FPCompo, t_final, n_th_init, n_fa_init, mTot):
         "N_Xe": N_Xe_arr,
         "sigma_ctrl_th": sigma_ctrl_th_arr,
         "sigma_ctrl_fast": sigma_ctrl_fast_arr,
+        "k_eff": k_eff_arr,          # <-- nouveau
     }
 
     return results
@@ -290,9 +295,7 @@ if __name__ == "__main__":
     fuelCompo = Fuel()
     FPCompo = FP()
 
-    # Attention: t_final=200 s avec dt=1e-4 → 2e6 pas → long et lourd.
-    # Pour tester, commence par t_final=1 ou 5 s.
-    t_final = 200
+    t_final = 100.0
     results = reactorModel(
         fuelCompo=fuelCompo,
         FPCompo=FPCompo,
@@ -312,6 +315,17 @@ if __name__ == "__main__":
     plt.title("Reactor power vs time")
     plt.grid(True)
 
+    # --------- Figure 2: k_eff vs time ---------
+    plt.figure()
+    plt.plot(time, results["k_eff"])
+    plt.xlabel("Time [s]")
+    plt.ylabel("k_eff [-]")
+    plt.title("Effective multiplication factor vs time")
+    plt.grid(True)
+    # si tu veux zoomer autour de 1 :
+    # plt.ylim(0.9, 1.1)
+
+    plt.show()
     # --------- Figure 2: neutrons thermiques / rapides ---------
     plt.figure()
     plt.semilogy(time, results["n_th"], label="n_th (thermal)")
