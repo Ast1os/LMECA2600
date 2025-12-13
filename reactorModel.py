@@ -144,6 +144,11 @@ def reactorModel(fuelCompo, FPCompo, t_final, n_th_init, n_fa_init, mTot):
     # ---------- Power setpoint (with ramp) ----------
     P_nominal = 1e9      # [W] puissance nominale visée
     t_ramp = 50.0        # [s] durée de la rampe 0 -> P_nominal
+    
+    # Rampe de consigne : 0 → P_nominal sur t_ramp
+    P_set = np.where(time < t_ramp,
+                     P_nominal * time / t_ramp,
+                     P_nominal)
 
     # ---------- P-controller (statique autour d'un Σ_eq) ----------
     # Gains assez doux pour éviter l'overshoot
@@ -269,6 +274,7 @@ def reactorModel(fuelCompo, FPCompo, t_final, n_th_init, n_fa_init, mTot):
         "sigma_ctrl_th": sigma_ctrl_th_arr,
         "sigma_ctrl_fast": sigma_ctrl_fast_arr,
         "k_eff": k_eff_arr,          # <-- nouveau
+        "P_set": P_set
     }
 
     return results
@@ -309,11 +315,13 @@ if __name__ == "__main__":
 
     # --------- Figure 1: puissance du réacteur ---------
     plt.figure()
-    plt.plot(time, results["P_total"])
+    plt.plot(time, results["P_total"], label="P_reactor")
+    plt.plot(time, results["P_set"], "--", label="P_set(t)")
     plt.xlabel("Time [s]")
     plt.ylabel("Power [W]")
     plt.title("Reactor power vs time")
     plt.grid(True)
+    plt.legend()
 
     # --------- Figure 2: k_eff vs time ---------
     plt.figure()
