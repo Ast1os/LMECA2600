@@ -8,8 +8,6 @@ def molarMass(X):
         molar mass of the nucleon, or nuclide X in [kg/mol]
     """
 
-    # Your work : add all species
-
     if X == 'Th232':
         M = 232.038060026e-3
     elif X == 'Th233':
@@ -38,9 +36,7 @@ def molarMass(X):
 
     elif X == 'Xe135':
         M = 134.907226844e-3
-    # Neutron
     elif X == 'n':
-        # Neutron molar mass (CODATA 2018): ~1.008664917×10^-3 kg/mol
         M = 1.008664917e-3
 
     else:
@@ -48,7 +44,3 @@ def molarMass(X):
         M = 0.0
 
     return M
-
-# Try your function:
-Mm = molarMass('U235')
-print(Mm)
