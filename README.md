@@ -191,42 +191,6 @@ results = {
 - `class Fuel`: container for initial fuel mass fractions (**U-235, U-238, Pu-239, Th-232**).  
 - `class FP`: container for FP partition between **Xe135** and **other FP**.
 
----
-
-### 5. `project.py` (optional driver script)
-
-This script is used to perform **several analyses** based on the `reactorModel` function, for example:
-
-- **Base case**: nominal conditions (25 kg fuel, standard 3% enrichment, default control parameters) and plots of power, k_eff, Xe-135, burnup.
-- **Sensitivity to control parameters**: change the proportional gain, the ramp time, or the initial control cross sections and compare the transient and the overshoot.
-- **Effect of xenon poisoning**: compare runs with and without Xe-135 absorption (σ_Xe = 0) to show the impact on power and control rod position.
-- **Effect of fuel composition**: vary Pu-239 content or enrichment and see how much control-rod worth is required to keep 1 GW.
-
-A typical structure is:
-
-```python
-from reactorModel import reactorModel, Fuel, FP
-import matplotlib.pyplot as plt
-
-def run_base_case():
-    fuel = Fuel()
-    fp = FP()
-    res = reactorModel(fuel, fp,
-                       t_final=100.0,
-                       n_th_init=1e10,
-                       n_fa_init=0.0,
-                       mTot=25.0)
-    # plotting commands …
-
-def main():
-    run_base_case()
-    # possibly call other scenarios
-
-if __name__ == "__main__":
-    main()
-```
-
----
 
 ## How to run
 
@@ -239,17 +203,6 @@ python molarMass.py
 python reactorModel.py
 ```
 
-Each file contains a small `if __name__ == "__main__":` block that runs a simple example.
-
-- To reproduce all the analyses used in your presentation, run:
-
-```bash
-python project.py
-```
-
-which will call `reactorModel` with the different parameter sets and generate the corresponding plots.
-
----
 
 ## Summary of main assumptions
 
